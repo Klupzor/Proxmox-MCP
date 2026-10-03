@@ -1,0 +1,19 @@
+services:
+  web:
+    image: nginx:1.27.2
+    user: "101:101"
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set in .env}
+      GREETING: ${GREETING:-hello}
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/"]
+    mem_limit: 256m
+    cpus: 0.5

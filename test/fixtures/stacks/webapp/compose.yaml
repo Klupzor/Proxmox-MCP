@@ -1,0 +1,21 @@
+services:
+  app:
+    image: ghcr.io/example/webapp
+    privileged: true
+    network_mode: host
+    environment:
+      DB_PASSWORD: hunter2-plaintext
+      API_TOKEN: ${API_TOKEN}
+      LOG_LEVEL: info
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc:/host-etc
+      - ./data:/data
+    cap_add:
+      - SYS_ADMIN
+  db:
+    image: postgres:latest
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=supersecret

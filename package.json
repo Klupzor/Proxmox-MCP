@@ -1,0 +1,31 @@
+{
+  "name": "proxmox-mcp",
+  "version": "0.1.0",
+  "description": "Secure local MCP server for Proxmox VE and Portainer",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "proxmox-mcp": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "dotenv": "^18.0.5",
+    "undici": "^8.11.2",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
