@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+
+# Secrets (blueprint/rules.md R7)
+.env
+.env.*
+!.env.example
+stacks/**/.env
+stacks/**/.env.*
+!stacks/**/.env.example
+*.pem
+*.key
+
+.DS_Store
