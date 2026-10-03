@@ -11,5 +11,6 @@ stacks/**/.env.*
 !stacks/**/.env.example
 *.pem
 *.key
+certs/
 
 .DS_Store
