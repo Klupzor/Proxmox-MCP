@@ -65,6 +65,22 @@ describe("PortainerClient", () => {
     expect(await ptr.resolveEndpoint()).toBe(2);
   });
 
+  it("runs an exec and returns demuxed output with the exit code", async () => {
+    const pool = agent.get("https://ptr.test:9443");
+    const frame = Buffer.concat([Buffer.from([1, 0, 0, 0, 0, 0, 0, 3]), Buffer.from("ok\n")]);
+    pool
+      .intercept({
+        path: "/api/endpoints/3/docker/containers/abc/exec",
+        method: "POST",
+        body: (b) => JSON.parse(b).User === "www-data" && JSON.parse(b).Cmd[0] === "php",
+      })
+      .reply(201, { Id: "ex1" });
+    pool.intercept({ path: "/api/endpoints/3/docker/exec/ex1/start", method: "POST" }).reply(200, frame);
+    pool.intercept({ path: "/api/endpoints/3/docker/exec/ex1/json", method: "GET" }).reply(200, { ExitCode: 0, Running: false });
+    const ptr = new PortainerClient({ url: "https://ptr.test:9443", apiKey: "k", allowedEndpoints: [3] }, 5000, agent);
+    expect(await ptr.execInContainer(3, "abc", ["php", "occ", "status"], "www-data", 60000)).toEqual({ exitCode: 0, output: "ok\n" });
+  });
+
   it("refuses endpoints outside the allowlist", async () => {
     const ptr = new PortainerClient({ url: "https://ptr.test:9443", apiKey: "k", allowedEndpoints: [2] }, 5000, agent);
     expect(() => ptr.listImages(3)).toThrow(/not in the configured allowlist/);

@@ -33,3 +33,7 @@ Every call to an `operate` or `admin` tool â€” successful, failed, or refused â€
 ## R8: Least-privilege credentials
 
 API tokens are scoped to the minimum the configured access level needs. The recommended Proxmox roles and Portainer permissions per level are in [`docs/setup.md`](../docs/setup.md).
+
+## R9: Only committed command definitions run
+
+In-container commands (D6) execute only as defined in the version of `stacks/<stack>/commands.yaml` committed to git. Uncommitted edits are ignored. Adding or changing a command therefore requires a reviewed commit, which takes the place of a server restart as the human checkpoint.

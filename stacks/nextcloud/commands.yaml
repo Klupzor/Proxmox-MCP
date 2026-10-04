@@ -1,0 +1,98 @@
+# Allowlisted in-container commands for the Nextcloud stack (D6, R9).
+# Run with the MCP tool `app_command` (admin level, confirm = command name).
+# Only the version of this file committed to git is executed: edit, review, commit.
+# Every argv is fixed; nothing from the tool call is interpolated. Values a command
+# needs (credentials, usernames) come from the container's own environment.
+
+service: app
+user: www-data
+
+commands:
+  # --- read-only ---
+  status:
+    description: Installed state, version, maintenance mode (JSON).
+    argv: [php, /var/www/html/occ, status, --output=json]
+  dbtype:
+    description: Database type in use (sqlite3, pgsql, mysql).
+    argv: [php, /var/www/html/occ, config:system:get, dbtype]
+  app_list:
+    description: Enabled and disabled apps with versions.
+    argv: [php, /var/www/html/occ, app:list]
+  users_info:
+    description: Users with quota, groups, last login (JSON).
+    argv: [php, /var/www/html/occ, user:list, --info, --output=json]
+  config_list:
+    description: System config with sensitive values removed by occ.
+    argv: [php, /var/www/html/occ, config:list, system]
+  disk_free:
+    description: Free space on the data directory and /tmp.
+    argv:
+      - sh
+      - -c
+      - d="$(php /var/www/html/occ config:system:get datadirectory)"; df -h "$d" /tmp
+  uploads_ls:
+    description: Chunked-upload folders and their chunk files (last 60 lines).
+    argv:
+      - sh
+      - -c
+      - d="$(php /var/www/html/occ config:system:get datadirectory)"; ls -la --time-style=+%H:%M:%S "$d"/*/uploads/*/ 2>&1 | tail -n 60
+  log_tail:
+    description: Last 80 entries of nextcloud.log.
+    argv:
+      - sh
+      - -c
+      - d="$(php /var/www/html/occ config:system:get datadirectory)"; tail -n 80 "$d/nextcloud.log"
+  data_ls:
+    description: Data directory layout (old and new locations) and size of each user's files.
+    timeoutSeconds: 900
+    argv:
+      - sh
+      - -c
+      - |
+        echo "datadirectory=$(php /var/www/html/occ config:system:get datadirectory 2>/dev/null)"
+        for p in /var/www/html/data /srv/nc /srv/nc/data; do
+          [ -d "$p" ] && { echo "== $p"; ls -la "$p"; }
+        done
+        echo "== user files"
+        du -sh /var/www/html/data/*/files /srv/nc/*/files /srv/nc/data/*/files 2>/dev/null
+        true
+
+  # --- changes ---
+  maintenance_on:
+    description: Enable maintenance mode.
+    argv: [php, /var/www/html/occ, maintenance:mode, --on]
+  maintenance_off:
+    description: Disable maintenance mode.
+    argv: [php, /var/www/html/occ, maintenance:mode, --off]
+  add_missing_indices:
+    description: Add missing database indices.
+    timeoutSeconds: 900
+    argv: [php, /var/www/html/occ, db:add-missing-indices]
+  background_cron:
+    description: Run background jobs via the cron container.
+    argv: [php, /var/www/html/occ, background:cron]
+  files_scan:
+    description: Re-index all users' files from disk.
+    timeoutSeconds: 7200
+    argv: [php, /var/www/html/occ, files:scan, --all]
+
+  # --- one-off migration (approved 2026-10-03), remove after use ---
+  import_old_files:
+    description: >-
+      Move the old install's files for $NC_IMPORT_USER into the new data directory
+      (same-mount rename, no copy). Keeps the new install's skeleton aside. Refuses if
+      anything is not as expected.
+    timeoutSeconds: 300
+    argv:
+      - sh
+      - -c
+      - |
+        set -eu
+        u="${NC_IMPORT_USER:?NC_IMPORT_USER not set}"
+        src="/srv/nc/$u/files"; dst="/srv/nc/data/$u/files"
+        test -d "$src" || { echo "no old files at $src (already imported?)"; exit 3; }
+        test -d "$dst" || { echo "new user $u has no files dir yet: finish the web installer and log in once"; exit 4; }
+        test ! -e "$dst.skeleton" || { echo "$dst.skeleton exists: import already attempted"; exit 5; }
+        mv "$dst" "$dst.skeleton"
+        mv "$src" "$dst"
+        echo "moved $src -> $dst (new skeleton kept at $dst.skeleton)"

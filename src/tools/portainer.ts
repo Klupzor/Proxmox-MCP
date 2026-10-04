@@ -164,6 +164,18 @@ export function portainerTools(ptr: PortainerClient, stacks: StacksRepo): ToolDe
       },
     }),
     defineTool({
+      name: "ptr_container_top",
+      title: "Container processes",
+      description: "Process list of a container (ps aux): what is running, CPU/memory, and state (e.g. D = waiting on disk).",
+      level: "read",
+      input: { endpointId: endpointIdSchema, container: containerSchema },
+      handler: async ({ endpointId, container }) => {
+        const id = await ptr.resolveEndpoint(endpointId);
+        const top = await ptr.containerTop(id, container);
+        return [top.Titles.join("  "), ...top.Processes.map((p) => p.join("  "))].join("\n");
+      },
+    }),
+    defineTool({
       name: "ptr_list_images",
       title: "List images",
       description: "List images on an endpoint.",

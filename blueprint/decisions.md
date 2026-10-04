@@ -19,3 +19,7 @@ Three levels — `read` (default), `operate` (start/stop/restart/redeploy/snapsh
 ## D5: App stacks are versioned in this repo
 
 Each Docker app's compose definition lives in `stacks/<app>/compose.yaml`, with secrets in a gitignored `stacks/<app>/.env`. The repo is the intended source of truth; Portainer's deployed state is compared against it (drift detection) and updated from it.
+
+## D6: No generic container exec — only allowlisted app commands
+
+The MCP never exposes arbitrary `docker exec`, because it is root-equivalent on the Docker host. When an app needs in-container maintenance, the `admin` tool `app_command` runs a fixed allowlist of commands defined per stack in `stacks/<stack>/commands.yaml`. Client input selects a command by name; it is never interpolated into one. Credentials such commands need come from the container's own environment. The definitions live in data, not code, so new commands need a commit ([R9](rules.md#r9-only-committed-command-definitions-run)) rather than a server restart.

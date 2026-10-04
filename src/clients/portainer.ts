@@ -30,6 +30,9 @@ export interface Stack {
 
 export type ContainerAction = "start" | "stop" | "restart";
 
+/** Stack deploys pull images and recreate containers; they routinely exceed the default timeout. */
+const DEPLOY_TIMEOUT_MS = 15 * 60_000;
+
 export class PortainerClient {
   private readonly http: HttpClient;
   readonly endpoints: Allowlist<number>;
@@ -90,7 +93,10 @@ export class PortainerClient {
 
   async stackAction(stackId: number, action: "start" | "stop"): Promise<Stack> {
     const stack = await this.getStack(stackId);
-    await this.http.json("POST", `/stacks/${stackId}/${action}`, { query: { endpointId: stack.EndpointId } });
+    await this.http.json("POST", `/stacks/${stackId}/${action}`, {
+      query: { endpointId: stack.EndpointId },
+      timeoutMs: DEPLOY_TIMEOUT_MS,
+    });
     return stack;
   }
 
@@ -104,6 +110,7 @@ export class PortainerClient {
     await this.http.json("PUT", `/stacks/${stack.Id}`, {
       query: { endpointId: stack.EndpointId },
       json: { stackFileContent: content, env, prune: opts.prune, pullImage: opts.pullImage },
+      timeoutMs: DEPLOY_TIMEOUT_MS,
     });
   }
 
@@ -120,6 +127,7 @@ export class PortainerClient {
     return this.http.json<Stack>("POST", "/stacks/create/standalone/string", {
       query: { endpointId },
       json: { name, stackFileContent: content, env },
+      timeoutMs: DEPLOY_TIMEOUT_MS,
     });
   }
 
@@ -153,6 +161,55 @@ export class PortainerClient {
 
   async containerAction(endpointId: number, id: string, action: ContainerAction): Promise<void> {
     await this.http.json("POST", this.docker(endpointId, `/containers/${encodeURIComponent(id)}/${action}`));
+  }
+
+  /** Process list of a container (Docker `top`, runs `ps aux` on the Docker host). */
+  containerTop(endpointId: number, id: string): Promise<{ Titles: string[]; Processes: string[][] }> {
+    return this.http.json("GET", this.docker(endpointId, `/containers/${encodeURIComponent(id)}/top`), {
+      query: { ps_args: "aux" },
+    });
+  }
+
+  /** Find the container of a compose stack's service via Compose labels. */
+  async findServiceContainer(endpointId: number, project: string, service: string): Promise<string> {
+    const filters = JSON.stringify({
+      label: [`com.docker.compose.project=${project}`, `com.docker.compose.service=${service}`],
+      status: ["running"],
+    });
+    const list = await this.http.json<Array<{ Id: string }>>("GET", this.docker(endpointId, "/containers/json"), {
+      query: { filters },
+    });
+    if (list.length !== 1) {
+      throw new ToolError(`expected one running '${service}' container in stack '${project}', found ${list.length}`);
+    }
+    return list[0]!.Id;
+  }
+
+  /**
+   * Run a fixed argv in a container and wait for it. Internal only: callers must pass a
+   * hard-coded command, never user input (see tools/nextcloud.ts).
+   */
+  async execInContainer(
+    endpointId: number,
+    containerId: string,
+    cmd: string[],
+    user: string,
+    timeoutMs: number,
+  ): Promise<{ exitCode: number; output: string }> {
+    const created = await this.http.json<{ Id: string }>(
+      "POST",
+      this.docker(endpointId, `/containers/${encodeURIComponent(containerId)}/exec`),
+      { json: { AttachStdout: true, AttachStderr: true, Tty: false, User: user, Cmd: cmd } },
+    );
+    const raw = await this.http.raw("POST", this.docker(endpointId, `/exec/${encodeURIComponent(created.Id)}/start`), {
+      json: { Detach: false, Tty: false },
+      timeoutMs,
+    });
+    const info = await this.http.json<{ ExitCode: number | null; Running: boolean }>(
+      "GET",
+      this.docker(endpointId, `/exec/${encodeURIComponent(created.Id)}/json`),
+    );
+    return { exitCode: info.ExitCode ?? -1, output: demuxDockerStream(raw) };
   }
 
   listImages(endpointId: number): Promise<Array<Record<string, unknown>>> {

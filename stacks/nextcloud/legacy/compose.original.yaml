@@ -1,0 +1,17 @@
+# Original Portainer stack "nextcloud" (id 8) as found on 2026-10-03, before any changes.
+# Kept for reference only — never deploy. SQLite, no Redis, nextcloud:latest (was 34.0.0).
+version: '3'
+
+services:
+  app:
+    image: nextcloud:latest
+    restart: unless-stopped
+    ports:
+      - 8081:80
+    volumes:
+      - /mnt/data/nextcloud/config:/var/www/html/config
+      - /mnt/data/NextcloudData:/var/www/html/data
+    environment:
+      - NEXTCLOUD_TRUSTED_DOMAINS=192.168.1.27
+      - NEXTCLOUD_DATA_DIR=/var/www/html/data
+      - SQLITE_DATABASE=owncloud

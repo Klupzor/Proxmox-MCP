@@ -16,6 +16,8 @@ Ownership map of `src/`. See [architecture.md](architecture.md) for how the laye
 | `security/redact.ts` | All secret redaction (R3): keys, values, `{name,value}` pairs, compose text. |
 | `security/auditLog.ts` | Append-only JSONL audit log (R6). |
 | `tools/define.ts` | Tool definition and registration. This is where R1, R2, R3 and R6 are applied uniformly to every tool. Shared input schemas live here too. |
+| `appCommands.ts` | Loads and validates `stacks/<stack>/commands.yaml` from the committed git version only (D6, R9). |
+| `tools/appCommands.ts` | `app_commands_list` (read) and `app_command` (admin). This is the only caller of `PortainerClient.execInContainer`. |
 | `tools/proxmox.ts`, `tools/portainer.ts`, `tools/audit.ts` | Tool definitions per area. Handlers only call clients and audit rules. |
 | `audit/serviceRules.ts` | Security rules for one Docker service, normalized from compose or from a running container. |
 | `audit/composeRules.ts`, `audit/containerRules.ts` | Normalize compose YAML or `docker inspect` output into service specs. |

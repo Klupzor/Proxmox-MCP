@@ -16,20 +16,32 @@ export interface RequestOptions {
   query?: Record<string, string | number | boolean | undefined>;
   json?: unknown;
   form?: Record<string, string | number | boolean | undefined>;
+  /** Override the client timeout for long-running calls (e.g. container exec). */
+  timeoutMs?: number;
 }
 
 export class HttpClient {
   private readonly dispatcher: Dispatcher;
+  private readonly slowDispatchers = new Map<number, Dispatcher>();
 
   constructor(private readonly opts: HttpClientOptions) {
+    this.dispatcher = opts.dispatcher ?? this.createAgent(opts.timeoutMs);
+  }
+
+  private createAgent(timeoutMs: number): Dispatcher {
     // R4: rejectUnauthorized is never turned off; a CA is the only escape hatch.
-    this.dispatcher =
-      opts.dispatcher ??
-      new Agent({
-        connect: { rejectUnauthorized: true, ...(opts.ca ? { ca: opts.ca } : {}) },
-        headersTimeout: opts.timeoutMs,
-        bodyTimeout: opts.timeoutMs,
-      });
+    return new Agent({
+      connect: { rejectUnauthorized: true, ...(this.opts.ca ? { ca: this.opts.ca } : {}) },
+      headersTimeout: timeoutMs,
+      bodyTimeout: timeoutMs,
+    });
+  }
+
+  private dispatcherFor(timeoutMs?: number): Dispatcher {
+    if (!timeoutMs || this.opts.dispatcher) return this.dispatcher;
+    let d = this.slowDispatchers.get(timeoutMs);
+    if (!d) this.slowDispatchers.set(timeoutMs, (d = this.createAgent(timeoutMs)));
+    return d;
   }
 
   async json<T>(method: string, path: string, req: RequestOptions = {}): Promise<T> {
@@ -70,8 +82,8 @@ export class HttpClient {
         method,
         headers,
         body,
-        dispatcher: this.dispatcher,
-        signal: AbortSignal.timeout(this.opts.timeoutMs),
+        dispatcher: this.dispatcherFor(req.timeoutMs),
+        signal: AbortSignal.timeout(req.timeoutMs ?? this.opts.timeoutMs),
         redirect: "error",
       });
     } catch (err) {

@@ -1,0 +1,106 @@
+# Intermediate state (2026-10-03): old install on SQLite + Redis + cron. Reference only.
+# Nextcloud (LAN-only) — PostgreSQL + Redis + cron.
+# Secrets come from stacks/nextcloud/.env (gitignored); see .env.example.
+# /var/www/html is a NAMED volume: Portainer's stack update does not reuse anonymous
+# volumes, and this one holds the installed custom_apps.
+
+services:
+  app:
+    image: nextcloud:34.0.0-apache
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8081:80"
+    volumes:
+      - html:/var/www/html
+      - /mnt/data/nextcloud/config:/var/www/html/config
+      - /mnt/data/NextcloudData:/var/www/html/data
+    environment:
+      NEXTCLOUD_TRUSTED_DOMAINS: 192.168.1.27
+      NEXTCLOUD_DATA_DIR: /var/www/html/data
+      # Used by `occ db:convert-type` target and by fresh installs only.
+      POSTGRES_HOST: db
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      # Redis for file locking + distributed cache (image writes redis.config.php).
+      REDIS_HOST: redis
+      REDIS_HOST_PASSWORD: ${REDIS_PASSWORD:?set in .env}
+      # Large uploads on the LAN.
+      PHP_MEMORY_LIMIT: 1G
+      PHP_UPLOAD_LIMIT: 16G
+      APACHE_BODY_LIMIT: "0"
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://localhost/status.php') === false ? 1 : 0);"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    mem_limit: 2g
+    cpus: 2
+
+  cron:
+    image: nextcloud:34.0.0-apache
+    restart: unless-stopped
+    entrypoint: /cron.sh
+    depends_on:
+      - app
+    volumes_from:
+      - app
+    environment:
+      REDIS_HOST: redis
+      REDIS_HOST_PASSWORD: ${REDIS_PASSWORD:?set in .env}
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 0.5
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    volumes:
+      - db:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextcloud -d nextcloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 1g
+    cpus: 1
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Cache/locking only: no persistence, so a read-only rootfs is fine.
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --save '' --appendonly no --maxmemory 128mb --maxmemory-policy allkeys-lru"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set in .env}
+    user: "999:1000"
+    read_only: true
+    tmpfs:
+      - /data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+    cpus: 0.5
+
+volumes:
+  html:
+  db:

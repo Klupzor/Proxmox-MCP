@@ -7,6 +7,7 @@ stacks/<app>/
   compose.yaml   # committed; references secrets as ${VAR}, never inline
   .env.example   # committed; placeholder values only
   .env           # gitignored; real values (chmod 600)
+  commands.yaml  # optional; allowlisted in-container commands for `app_command` (D6, R9)
 ```
 
 The directory name must equal the Portainer stack name — drift detection and deploy-from-repo match on it.

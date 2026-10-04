@@ -3,8 +3,10 @@ import { PortainerClient } from "./clients/portainer.js";
 import { ProxmoxClient } from "./clients/proxmox.js";
 import type { Config } from "./config.js";
 import { AuditLog } from "./security/auditLog.js";
+import { AppCommands } from "./appCommands.js";
 import { StacksRepo } from "./stacks.js";
 import { auditTools } from "./tools/audit.js";
+import { appCommandTools } from "./tools/appCommands.js";
 import { registerTools } from "./tools/define.js";
 import { portainerTools } from "./tools/portainer.js";
 import { proxmoxTools } from "./tools/proxmox.js";
@@ -31,7 +33,12 @@ export function createServer(config: Config, deps: ServerDeps = {}) {
     },
   );
 
-  const defs = [...(pve ? proxmoxTools(pve) : []), ...(ptr ? portainerTools(ptr, stacks) : []), ...auditTools({ pve, ptr, stacks })];
+  const defs = [
+    ...(pve ? proxmoxTools(pve) : []),
+    ...(ptr ? portainerTools(ptr, stacks) : []),
+    ...(ptr ? appCommandTools(ptr, new AppCommands(config.stacksDir)) : []),
+    ...auditTools({ pve, ptr, stacks }),
+  ];
   const tools = registerTools(server, defs, config.accessLevel, new AuditLog(config.auditLogPath));
   return { server, tools };
 }

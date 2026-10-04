@@ -197,6 +197,7 @@ To debug, run `npx @modelcontextprotocol/inspector node dist/index.js`.
 | `SSL certificate problem: unable to get local issuer certificate` | The server isn't presenting a certificate signed by the configured CA. For Portainer: upload the certificate and restart the container (section 3). |
 | Hostname or altname mismatch | The certificate doesn't list the address in the URL. Re-issue it with the right `subjectAltName`. |
 | `HTTP 401/403` from the MCP | Wrong token, or a missing ACL. Check with `pveum acl list` (Proxmox), or the user's environment and stack access (Portainer). |
+| New MCP code isn't picked up | Type `/mcp` in the Claude Code session and click **Reconnect** next to `proxmox-homelab`. No need to quit Claude. Changes to a stack's `commands.yaml` need no reload at all, only a commit (R9). |
 | MCP shows "Connection closed" at startup | The server exited: `.env` is missing, has invalid values, or is not `chmod 600`. Run `node dist/index.js` to see the error. |
 
 ## 6. Docker LXC hardening checklist

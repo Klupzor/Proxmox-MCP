@@ -8,8 +8,9 @@ import type { PortainerClient } from "../src/clients/portainer.js";
 import type { ProxmoxClient } from "../src/clients/proxmox.js";
 import type { AccessLevel, Config } from "../src/config.js";
 import { createServer } from "../src/server.js";
+import { DEMO_COMMANDS, gitStacksDir } from "./helpers.js";
 
-function setup(level: AccessLevel) {
+function setup(level: AccessLevel, stacksDir = path.join(__dirname, "fixtures/stacks")) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pmcp-"));
   const config: Config = {
     accessLevel: level,
@@ -17,7 +18,7 @@ function setup(level: AccessLevel) {
     portainer: { url: "https://ptr.test:9443", apiKey: "k", allowedEndpoints: [] },
     timeoutMs: 1000,
     auditLogPath: path.join(dir, "audit.jsonl"),
-    stacksDir: path.join(__dirname, "fixtures/stacks"),
+    stacksDir,
   };
   const pve = {
     guestAction: vi.fn(async () => ({ node: "pve", upid: "UPID:pve:1" })),
@@ -33,8 +34,8 @@ function setup(level: AccessLevel) {
   return { server, pve, ptr, auditLogPath: config.auditLogPath };
 }
 
-async function connect(level: AccessLevel) {
-  const ctx = setup(level);
+async function connect(level: AccessLevel, stacksDir?: string) {
+  const ctx = setup(level, stacksDir);
   const [clientT, serverT] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test", version: "0" });
   await Promise.all([ctx.server.connect(serverT), client.connect(clientT)]);
@@ -93,6 +94,45 @@ describe("confirmation (R2) and audit log (R6)", () => {
     const { client, auditLogPath } = await connect("read");
     await client.callTool({ name: "pve_list_guests", arguments: {} });
     expect(fs.existsSync(auditLogPath)).toBe(false);
+  });
+});
+
+describe("app_command (D6, R9)", () => {
+  it("is only exposed at admin; listing is read-only", async () => {
+    const read = (await (await connect("read")).client.listTools()).tools.map((t) => t.name);
+    expect(read).toContain("app_commands_list");
+    expect(read).not.toContain("app_command");
+    const admin = (await (await connect("admin")).client.listTools()).tools;
+    expect(admin.find((t) => t.name === "app_command")?.annotations?.destructiveHint).toBe(true);
+  });
+
+  it("requires confirm to equal the command and runs the committed fixed argv", async () => {
+    const { client, ptr } = await connect("admin", gitStacksDir("demo", DEMO_COMMANDS));
+    Object.assign(ptr, {
+      resolveEndpoint: vi.fn(async () => 3),
+      findServiceContainer: vi.fn(async () => "abc"),
+      execInContainer: vi.fn(async () => ({ exitCode: 0, output: "Maintenance mode enabled\n" })),
+    });
+    const refused = await client.callTool({
+      name: "app_command",
+      arguments: { stack: "demo", command: "maintenance_on", confirm: "status" },
+    });
+    expect(refused.isError).toBe(true);
+    expect((ptr as any).execInContainer).not.toHaveBeenCalled();
+
+    const unknown = await client.callTool({
+      name: "app_command",
+      arguments: { stack: "demo", command: "rm_rf", confirm: "rm_rf" },
+    });
+    expect(text(unknown)).toMatch(/unknown command/);
+
+    const ok = await client.callTool({
+      name: "app_command",
+      arguments: { stack: "demo", command: "maintenance_on", confirm: "maintenance_on" },
+    });
+    expect(text(ok)).toContain("Maintenance mode enabled");
+    expect((ptr as any).findServiceContainer).toHaveBeenCalledWith(3, "demo", "app");
+    expect((ptr as any).execInContainer).toHaveBeenCalledWith(3, "abc", ["php", "occ", "maintenance:mode", "--on"], "www-data", 60000);
   });
 });
 
