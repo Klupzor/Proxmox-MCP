@@ -99,6 +99,10 @@ services:
       - /tmp
     cap_drop:
       - ALL
+    # The caddy binary carries a file capability (cap_net_bind_service); exec fails
+    # with "Operation not permitted" unless it stays in the bounding set.
+    cap_add:
+      - NET_BIND_SERVICE
     security_opt:
       - no-new-privileges:true
     mem_limit: 256m
