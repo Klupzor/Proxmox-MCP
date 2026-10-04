@@ -1,4 +1,5 @@
-# Nextcloud (LAN-only) — fresh install on PostgreSQL + Redis + cron.
+# Nextcloud (LAN-only) — PostgreSQL + Redis + cron, HTTPS via Caddy (homelab private CA).
+#   https://192.168.1.27:8443  (http://192.168.1.27:8081 redirects there)
 # Secrets come from stacks/nextcloud/.env (gitignored); see .env.example.
 #
 # Layout:
@@ -19,8 +20,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    ports:
-      - "8081:80"
+    # No published ports: only reachable through the `proxy` service.
     volumes:
       - app_html:/var/www/html
       - /mnt/data/NextcloudData:/srv/nc
@@ -39,7 +39,11 @@ services:
       PHP_MEMORY_LIMIT: 1G
       PHP_UPLOAD_LIMIT: 16G
       APACHE_BODY_LIMIT: "0"
-      # Used only by the one-off `nc_occ import_old_files` migration command.
+      # Behind the Caddy proxy (image writes reverse-proxy.config.php from these).
+      TRUSTED_PROXIES: 172.16.0.0/12
+      OVERWRITEPROTOCOL: https
+      OVERWRITECLIURL: https://192.168.1.27:8443
+      # Used only by the one-off `import_old_files` migration command.
       NC_IMPORT_USER: Andres
     security_opt:
       - no-new-privileges:true
@@ -51,6 +55,54 @@ services:
       start_period: 120s
     mem_limit: 2g
     cpus: 2
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "8443:8443"   # HTTPS
+      - "8081:8081"   # redirect only
+    environment:
+      # Base64 PEMs from .env (gitignored); decoded to tmpfs at start.
+      TLS_CERT_B64: ${NC_TLS_CERT_B64:?set in .env}
+      TLS_KEY_B64: ${NC_TLS_KEY_B64:?set in .env}
+      XDG_CONFIG_HOME: /tmp/caddy-config
+      XDG_DATA_HOME: /tmp/caddy-data
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        umask 077
+        printf '%s' "$$TLS_CERT_B64" | base64 -d > /tmp/cert.pem
+        printf '%s' "$$TLS_KEY_B64" | base64 -d > /tmp/key.pem
+        cat > /tmp/Caddyfile <<'EOF'
+        {
+          admin off
+          auto_https off
+        }
+        :8443 {
+          tls /tmp/cert.pem /tmp/key.pem
+          header Strict-Transport-Security "max-age=15552000"
+          # No body-size or timeout limits: large uploads and long final joins must pass.
+          reverse_proxy app:80
+        }
+        :8081 {
+          redir https://{host}:8443{uri} permanent
+        }
+        EOF
+        exec caddy run --config /tmp/Caddyfile --adapter caddyfile
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 1
 
   cron:
     image: nextcloud:34.0.4-apache

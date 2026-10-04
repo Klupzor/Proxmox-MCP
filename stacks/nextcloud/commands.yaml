@@ -80,6 +80,16 @@ commands:
   background_cron:
     description: Run background jobs via the cron container.
     argv: [php, /var/www/html/occ, background:cron]
+  set_trusted_domain:
+    description: Set trusted_domains to exactly $NEXTCLOUD_TRUSTED_DOMAINS (from the container env).
+    argv:
+      - sh
+      - -c
+      - |
+        set -eu
+        php /var/www/html/occ config:system:delete trusted_domains
+        php /var/www/html/occ config:system:set trusted_domains 0 --value="$NEXTCLOUD_TRUSTED_DOMAINS"
+        php /var/www/html/occ config:system:get trusted_domains
   files_scan:
     description: Re-index all users' files from disk.
     timeoutSeconds: 7200
