@@ -1,0 +1,16 @@
+{
+  "_note": "Old install's system config as reported by `occ config:list system` on 2026-10-03 (sensitive values removed by occ). Data root /mnt/data/NextcloudData: Andres/files 25G, admin/files 63M (leftover user from an earlier install), three appdata_* dirs.",
+  "system": {
+    "passwordsalt": "***REMOVED SENSITIVE VALUE***",
+    "secret": "***REMOVED SENSITIVE VALUE***",
+    "trusted_domains": ["192.168.1.27:8081"],
+    "datadirectory": "***REMOVED SENSITIVE VALUE***",
+    "dbtype": "sqlite3",
+    "version": "34.0.0.12",
+    "overwrite.cli.url": "http://localhost",
+    "instanceid": "***REMOVED SENSITIVE VALUE***",
+    "installed": true,
+    "updater.secret": "***REMOVED SENSITIVE VALUE***",
+    "maintenance": false
+  }
+}

@@ -1,0 +1,10 @@
+# Old install's apps (occ app:list, 2026-10-03, Nextcloud 34.0.0)
+Enabled: activity app_api appstore bruteforcesettings circles cloud_federation_api comments
+  contactsinteraction dashboard dav federatedfilesharing federation files files_downloadlimit
+  files_lock files_pdfviewer files_reminders files_sharing files_trashbin files_versions
+  firstrunwizard logreader lookup_server_connector nextcloud_announcements notifications oauth2
+  office password_policy photos privacy profile provisioning_api recommendations related_resources
+  serverinfo settings sharebymail support survey_client systemtags text theming
+  twofactor_backupcodes twofactor_totp updatenotification user_status viewer weather_status
+  webhook_listeners workflowengine
+Disabled: admin_audit encryption files_external suspicious_login twofactor_nextcloud_notification user_ldap
