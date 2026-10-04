@@ -42,6 +42,15 @@ commands:
       - sh
       - -c
       - d="$(php /var/www/html/occ config:system:get datadirectory)"; tail -n 80 "$d/nextcloud.log"
+  files_tree:
+    description: Each user's files (up to 3 folders deep, max 200 lines) with modification time and size in bytes.
+    timeoutSeconds: 120
+    argv:
+      - sh
+      - -c
+      - |
+        d="$(php /var/www/html/occ config:system:get datadirectory)"
+        cd "$d" && find */files -maxdepth 3 -printf '%TY-%Tm-%Td %TH:%TM  %14s  %p\n' 2>/dev/null | sort -k4 | head -n 200
   data_ls:
     description: Data directory layout (old and new locations) and size of each user's files.
     timeoutSeconds: 900
