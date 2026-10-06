@@ -1,0 +1,30 @@
+# Host diagnostics for the Proxmox node, run over SSH (decision D7, rule R10).
+# The MCP sends only a command NAME. The forced-command wrapper on the host
+# (host/mcp-diag.sh) maps it to a fixed command line and refuses every other name.
+# Only the version committed to git is used (R9). Keep the names here and in the
+# wrapper's `case` in sync: a test checks they are equal.
+commands:
+  lsblk:
+    description: Block devices with type, size, rotational flag (ROTA=1 means HDD), transport (usb, sata, nvme), model and mount points.
+    level: operate
+    timeoutSeconds: 30
+  df:
+    description: Filesystem usage with filesystem type.
+    level: operate
+    timeoutSeconds: 30
+  findmnt:
+    description: Mounted filesystems with source, type and options.
+    level: operate
+    timeoutSeconds: 30
+  ethtool:
+    description: Negotiated speed, duplex and link state of every physical network interface.
+    level: operate
+    timeoutSeconds: 30
+  ip_link_stats:
+    description: Per-interface packet, error and drop counters (ip -s link).
+    level: operate
+    timeoutSeconds: 30
+  disk_speed_test:
+    description: Writes then reads a 2 GiB temporary file on the data disk (/mnt/data) with direct I/O and reports MB/s. The file is always deleted. Refuses if /mnt/data is not a mount point or free space is under 4 GiB.
+    level: admin
+    timeoutSeconds: 300

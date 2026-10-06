@@ -42,6 +42,14 @@ const envSchema = z
     PROXMOX_ALLOWED_NODES: csv,
     PROXMOX_ALLOWED_VMIDS: csv,
 
+    PROXMOX_SSH_HOST: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$/, "expected a hostname or IPv4 address").optional(),
+    PROXMOX_SSH_NODE: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]{0,62}$/, "expected the Proxmox node name").optional(),
+    PROXMOX_SSH_KEY_FILE: z.string().min(1).optional(),
+    PROXMOX_SSH_KNOWN_HOSTS_FILE: z.string().min(1).optional(),
+    PROXMOX_SSH_USER: z.string().regex(/^[a-z_][a-z0-9_-]{0,31}$/).default("root"),
+    PROXMOX_SSH_PORT: z.coerce.number().int().min(1).max(65535).default(22),
+    HOST_DIR: z.string().optional(),
+
     PORTAINER_URL: httpsUrl.optional(),
     PORTAINER_API_KEY: z.string().min(1).optional(),
     PORTAINER_CA_FILE: z.string().optional(),
@@ -56,6 +64,11 @@ const envSchema = z
       ["Proxmox", ["PROXMOX_URL", "PROXMOX_TOKEN_ID", "PROXMOX_TOKEN_SECRET"]],
       ["Portainer", ["PORTAINER_URL", "PORTAINER_API_KEY"]],
     ];
+    const ssh = ["PROXMOX_SSH_HOST", "PROXMOX_SSH_NODE", "PROXMOX_SSH_KEY_FILE", "PROXMOX_SSH_KNOWN_HOSTS_FILE"] as const;
+    const sshSet = ssh.filter((k) => env[k] !== undefined);
+    if (sshSet.length > 0 && sshSet.length < ssh.length) {
+      ctx.addIssue({ code: "custom", message: `Proxmox SSH is partially configured; set all of ${ssh.join(", ")}` });
+    }
     let configured = 0;
     for (const [name, keys] of groups) {
       const set = keys.filter((k) => env[k as keyof typeof env] !== undefined);
@@ -96,9 +109,23 @@ export interface PortainerConfig {
   allowedEndpoints: number[];
 }
 
+/** D7: SSH to the Proxmox host. The key is bound to a forced command there (host/mcp-diag.sh). */
+export interface HostSshConfig {
+  host: string;
+  port: number;
+  user: string;
+  /** Proxmox node this host is. Checked against PROXMOX_ALLOWED_NODES (R5). */
+  node: string;
+  keyFile: string;
+  knownHostsFile: string;
+  /** Directory holding the committed commands.yaml (R9). */
+  hostDir: string;
+}
+
 export interface Config {
   accessLevel: AccessLevel;
   proxmox?: ProxmoxConfig;
+  ssh?: HostSshConfig;
   portainer?: PortainerConfig;
   timeoutMs: number;
   auditLogPath: string;
@@ -112,6 +139,14 @@ function readCa(file: string | undefined, baseDir: string): string | undefined {
     return fs.readFileSync(resolved, "utf8");
   } catch {
     throw new ConfigError(`cannot read CA file ${resolved}`);
+  }
+}
+
+function checkReadable(file: string, what: string): void {
+  try {
+    fs.accessSync(file, fs.constants.R_OK);
+  } catch {
+    throw new ConfigError(`cannot read ${what} ${file}`);
   }
 }
 
@@ -147,12 +182,33 @@ export function parseConfig(raw: Record<string, string | undefined>, baseDir = P
             allowedEndpoints: env.PORTAINER_ALLOWED_ENDPOINTS.map(Number),
           }
         : undefined,
+    ssh: sshConfig(env, baseDir),
     timeoutMs: env.HTTP_TIMEOUT_MS,
     auditLogPath: path.resolve(
       baseDir,
       env.AUDIT_LOG_PATH ?? path.join(os.homedir(), ".local", "state", "proxmox-mcp", "audit.jsonl"),
     ),
     stacksDir: path.resolve(baseDir, env.STACKS_DIR ?? "stacks"),
+  };
+}
+
+function sshConfig(env: z.infer<typeof envSchema>, baseDir: string): HostSshConfig | undefined {
+  if (!env.PROXMOX_SSH_HOST || !env.PROXMOX_SSH_NODE || !env.PROXMOX_SSH_KEY_FILE || !env.PROXMOX_SSH_KNOWN_HOSTS_FILE) {
+    return undefined;
+  }
+  const keyFile = path.resolve(baseDir, env.PROXMOX_SSH_KEY_FILE);
+  const knownHostsFile = path.resolve(baseDir, env.PROXMOX_SSH_KNOWN_HOSTS_FILE);
+  checkReadable(keyFile, "SSH key file");
+  checkReadable(knownHostsFile, "SSH known_hosts file");
+  assertPrivateFile(keyFile); // D3: a private key readable by others is refused
+  return {
+    host: env.PROXMOX_SSH_HOST,
+    port: env.PROXMOX_SSH_PORT,
+    user: env.PROXMOX_SSH_USER,
+    node: env.PROXMOX_SSH_NODE,
+    keyFile,
+    knownHostsFile,
+    hostDir: path.resolve(baseDir, env.HOST_DIR ?? "host"),
   };
 }
 

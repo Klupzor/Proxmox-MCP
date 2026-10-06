@@ -1,11 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { HostSsh } from "./clients/hostSsh.js";
 import { PortainerClient } from "./clients/portainer.js";
 import { ProxmoxClient } from "./clients/proxmox.js";
 import type { Config } from "./config.js";
 import { AuditLog } from "./security/auditLog.js";
 import { AppCommands } from "./appCommands.js";
+import { HostCommands } from "./hostCommands.js";
 import { StacksRepo } from "./stacks.js";
 import { auditTools } from "./tools/audit.js";
+import { hostTools } from "./tools/host.js";
 import { appCommandTools } from "./tools/appCommands.js";
 import { registerTools } from "./tools/define.js";
 import { portainerTools } from "./tools/portainer.js";
@@ -14,11 +17,13 @@ import { proxmoxTools } from "./tools/proxmox.js";
 export interface ServerDeps {
   pve?: ProxmoxClient;
   ptr?: PortainerClient;
+  hostSsh?: HostSsh;
 }
 
 export function createServer(config: Config, deps: ServerDeps = {}) {
   const pve = deps.pve ?? (config.proxmox ? new ProxmoxClient(config.proxmox, config.timeoutMs) : undefined);
   const ptr = deps.ptr ?? (config.portainer ? new PortainerClient(config.portainer, config.timeoutMs) : undefined);
+  const hostSsh = deps.hostSsh ?? (config.ssh ? new HostSsh(config.ssh) : undefined);
   const stacks = new StacksRepo(config.stacksDir);
 
   const server = new McpServer(
@@ -37,6 +42,9 @@ export function createServer(config: Config, deps: ServerDeps = {}) {
     ...(pve ? proxmoxTools(pve) : []),
     ...(ptr ? portainerTools(ptr, stacks) : []),
     ...(ptr ? appCommandTools(ptr, new AppCommands(config.stacksDir)) : []),
+    ...(hostSsh && config.ssh
+      ? hostTools(hostSsh, new HostCommands(config.ssh.hostDir), config.proxmox?.allowedNodes ?? [])
+      : []),
     ...auditTools({ pve, ptr, stacks }),
   ];
   const tools = registerTools(server, defs, config.accessLevel, new AuditLog(config.auditLogPath));

@@ -219,3 +219,69 @@ For each Portainer stack:
 2. Put the real values in `stacks/<app>/.env` (`chmod 600`, gitignored), and placeholders in `stacks/<app>/.env.example`.
 3. Run `audit_compose app=<app>` and fix the findings. Then `stack_drift app=<app>` shows what will change.
 4. Snapshot the Docker LXC (`pve_snapshot_create`), then deploy with `ptr_stack_deploy_from_repo` (admin level).
+
+## 8. Host diagnostics over SSH (optional)
+
+Lets the agent run a fixed set of diagnostics on the Proxmox **host** (disks, mounts, network link speed, a disk write/read test). It is off unless every `PROXMOX_SSH_*` variable is set. The key can only run `host/mcp-diag.sh`, which accepts a command name from a fixed list and nothing else (no shell, no arguments). The names are defined in `host/commands.yaml` and only the committed version is used (R9).
+
+### 8.1 Create a dedicated key (on your Mac, in this repo)
+
+```bash
+ssh-keygen -t ed25519 -f certs/proxmox-mcp-ssh -N "" -C proxmox-mcp
+chmod 600 certs/proxmox-mcp-ssh
+```
+
+`certs/` is gitignored (R7). The server refuses a key file that group or others can read.
+
+### 8.2 Install the wrapper on the host
+
+In the **Proxmox shell**, paste the contents of `host/mcp-diag.sh` into `/usr/local/bin/mcp-diag.sh`, then:
+
+```bash
+chown root:root /usr/local/bin/mcp-diag.sh && chmod 755 /usr/local/bin/mcp-diag.sh
+```
+
+Bind the public key to it. Add one line to `/root/.ssh/authorized_keys`, using the output of `cat certs/proxmox-mcp-ssh.pub` from your Mac and your Mac's address (or its subnet, such as `192.168.1.0/24`) in `from`:
+
+```
+command="/usr/local/bin/mcp-diag.sh",restrict,from="192.168.1.0/24" ssh-ed25519 AAAA... proxmox-mcp
+```
+
+`restrict` turns off the terminal, port forwarding, agent forwarding and X11. The wrapper needs `ethtool` for the network command (`apt install ethtool`).
+
+### 8.3 Pin the host key
+
+On the host, print its fingerprint:
+
+```bash
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+On your Mac, save the host key and check that its fingerprint is the same:
+
+```bash
+ssh-keyscan -t ed25519 192.168.1.28 > certs/proxmox-known-hosts
+ssh-keygen -lf certs/proxmox-known-hosts
+```
+
+The server never accepts an unknown or changed host key. If the host is reinstalled, repeat this step after verifying the new fingerprint.
+
+### 8.4 Configure and test
+
+Set in `.env` (see `.env.example`): `PROXMOX_SSH_HOST`, `PROXMOX_SSH_NODE` (the node name, which must be in `PROXMOX_ALLOWED_NODES` if you set one), `PROXMOX_SSH_KEY_FILE` and `PROXMOX_SSH_KNOWN_HOSTS_FILE`. Reconnect the server (`/mcp`).
+
+To test the wrapper from your Mac without the MCP:
+
+```bash
+ssh -i certs/proxmox-mcp-ssh -o IdentitiesOnly=yes -o UserKnownHostsFile=certs/proxmox-known-hosts root@192.168.1.28 lsblk
+```
+
+Anything other than a listed name must print `command not allowed`.
+
+| Tool | Level | What it runs |
+|---|---|---|
+| `host_commands_list` | read | Lists the commands and the level each needs. Executes nothing. |
+| `host_command` | operate | Read-only commands: `lsblk`, `df`, `findmnt`, `ethtool`, `ip_link_stats`. |
+| `host_command_admin` | admin | `disk_speed_test`. It writes a 2 GiB temporary file on `/mnt/data` and deletes it. `confirm` must equal the command name. |
+
+To add a command, add it to `host/mcp-diag.sh` (install the new version on the host) and to `host/commands.yaml`, then commit. A test checks that both lists have the same names.

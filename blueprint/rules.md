@@ -37,3 +37,7 @@ API tokens are scoped to the minimum the configured access level needs. The reco
 ## R9: Only committed command definitions run
 
 In-container commands (D6) execute only as defined in the version of `stacks/<stack>/commands.yaml` committed to git. Uncommitted edits are ignored. Adding or changing a command therefore requires a reviewed commit, which takes the place of a server restart as the human checkpoint.
+
+## R10: Host commands run only by name from the committed list
+
+Commands on the Proxmox host run only as a name from the version of `host/commands.yaml` committed to git ([R9](#r9-only-committed-command-definitions-run)), and the host's forced command (`host/mcp-diag.sh`) must accept that name too. No part of a command line, and no argument, comes from the client. SSH always verifies the host key against a pinned `known_hosts` file, and the private key file must not be readable by group or others. Commands that write to the host are `admin` tools and require an exact confirm ([R2](#r2-destructive-actions-require-exact-confirmation)).
